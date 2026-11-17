@@ -19,7 +19,7 @@ Before starting the assessment, you should:
 1. **Set Up GitHub Codespaces:**
 
    - Create a free GitHub account at [GitHub](https://github.com/signup).
-   - Open the Codespace using [this link](https://github.com/codespaces/new?repo=678723453&ref=rwa/design-and-implementation-v2&machine=standardLinux32gb).
+   - Open the Codespace using [this link](https://github.com/codespaces/new?repo=1437995225&ref=rwa/design-and-implementation-v2&machine=standardLinux32gb).
    - Your environment will automatically install all dependencies, seed the database, and start both the backend and frontend servers.
    - Open [http://localhost:3001](http://localhost:3001).
      - Log in with: **Email:** jcosten0@purevolume.com **Password:** password
