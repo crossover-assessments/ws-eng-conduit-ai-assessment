@@ -117,7 +117,7 @@ async function getSubmissionWarnings(diffPath: string): Promise<string[]> {
     process.exit(1);
   }
   if (clineAssessment.status === 'none') {
-    warnings.push('⚠️ WARNING: Cline history directory not found.');
+    warnings.push('⚠️ WARNING: AI Usage - Cline history directory not found. Missing AI interaction history will result in 0 stars for AI Usage.');
   } else {
     console.info(clineAssessment.message);
   }
