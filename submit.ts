@@ -2,7 +2,9 @@ import axios from 'axios';
 import prompts from 'prompts';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as os from 'os';
 import JSZip from 'jszip';
+import { addClineHistoryToZip, assessClineHistory, collectClineHistory, readClineInfo, resolveClineRoots } from './cline-history';
 import FormData from 'form-data';
 import { execSync } from 'child_process';
 
@@ -11,7 +13,7 @@ const ASSESSMENT_TYPE = 'feature-development';
 const ASSESSMENT_VERSION = 'v5';
 const ASSESSMENT_BRANCH = `rwa/${ASSESSMENT_TYPE}-${ASSESSMENT_VERSION}`;
 const API_URL = 'iyuja327ulc6hq3xsypufut7bh0lygdq.ynzoqn-hey.hf-rnfg-1.ba.njf';
-const REPO_GIT_URL = 'https://github.com/trilogy-group/ws-eng-conduit-ai-assessment.git';
+const REPO_GIT_URL = 'https://github.com/crossover-assessments/ws-eng-conduit-ai-assessment.git';
 
 function decode(s: string): string {
   const input = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
@@ -73,7 +75,7 @@ async function createGitDiff(): Promise<string> {
   execCommand(`git commit --allow-empty -am "chore(conduit): Generates patch."`);
   const remoteName = execCommand('git remote').split('\n')[0]?.trim() || 'origin';
   const diffOutput = execCommand(
-    `git diff ${remoteName}/${ASSESSMENT_BRANCH}...HEAD -- . ":!plan.md" ":!*.patch" ":!yarn.lock" ":!package-lock.json" ":!**/tsconfig*.json"`,
+    `git diff ${remoteName}/${ASSESSMENT_BRANCH}...HEAD -- . ":!plan.md" ":!*.patch" ":!yarn.lock" ":!package-lock.json" ":!**/tsconfig*.json" ":!submit.ts" ":!cline-history.ts" ":!cline-history.test.ts"`,
   );
   const diffPath = path.join(SUBMISSION_DIR, 'submission.patch');
   if (!diffOutput?.trim()) {
@@ -98,34 +100,17 @@ async function getSubmissionWarnings(diffPath: string): Promise<string[]> {
     warnings.push('⚠️ WARNING: Completeness - No screenshots found. Without visual proof of implementation, we cannot properly evaluate feature completeness.');
   }
 
-  const clineHistoryPath = await getClineHistoryPath();
-  if (clineHistoryPath) {
-    try {
-      const tasks = await fs.readdir(clineHistoryPath);
-      const validTasks = [];
-      for (const taskId of tasks) {
-        const taskPath = path.join(clineHistoryPath, taskId);
-        const stat = await fs.stat(taskPath);
-        if (stat.isDirectory()) {
-          const apiHistoryPath = path.join(taskPath, 'api_conversation_history.json');
-          try {
-            const stats = await fs.stat(apiHistoryPath);
-            if (stats.size > 0) {
-              validTasks.push(taskId);
-            }
-          } catch (error) {
-            console.warn(`⚠️  Could not read ${apiHistoryPath}:`, error);
-          }
-        }
-      }
-      if (validTasks.length === 0) {
-        warnings.push('⚠️ WARNING: AI Usage - No Cline chat history found. Missing AI interaction history will result in 0 stars for AI Usage.');
-      }
-    } catch {
-      warnings.push('⚠️ WARNING: AI Usage - Cannot access Cline history directory. Missing AI interaction history will result in 0 stars for AI Usage.');
-    }
+  const roots = resolveClineRoots(process.env, process.platform, os.homedir());
+  const collected = collectClineHistory(roots);
+  const clineAssessment = assessClineHistory(collected);
+  if (clineAssessment.status === 'silent-loss') {
+    console.error(clineAssessment.message);
+    process.exit(1);
+  }
+  if (clineAssessment.status === 'none') {
+    warnings.push('⚠️ WARNING: Cline history directory not found.');
   } else {
-    warnings.push('⚠️ WARNING: AI Usage - Cline history directory not found. Missing AI interaction history will result in 0 stars for AI Usage.');
+    console.info(clineAssessment.message);
   }
 
   return warnings;
@@ -170,90 +155,19 @@ async function addFileToZip(zip: JSZip, filePath: string, zipPath: string): Prom
 async function addSubmissionFiles(zip: JSZip): Promise<void> {
   const files = await fs.readdir(SUBMISSION_DIR);
   for (const file of files) {
+    if (file === 'submission.zip') continue;
     await addFileToZip(zip, path.join(SUBMISSION_DIR, file), file);
   }
-}
-
-async function getClineHistoryPath(): Promise<string | null> {
-  const possiblePaths = [
-    process.env.HOME && path.join(process.env.HOME, '.vscode-remote', 'data', 'User', 'globalStorage', 'saoudrizwan.claude-dev', 'tasks'),
-    process.env.APPDATA && path.join(process.env.APPDATA, 'Code', 'User', 'globalStorage', 'saoudrizwan.claude-dev', 'tasks'),
-    process.env.HOME && path.join(process.env.HOME, 'Library', 'Application Support', 'Code', 'User', 'globalStorage', 'saoudrizwan.claude-dev', 'tasks'),
-    process.env.HOME && path.join(process.env.HOME, '.config', 'Code', 'User', 'globalStorage', 'saoudrizwan.claude-dev', 'tasks'),
-    process.env.HOME && path.join(process.env.HOME, '.vscode-server', 'data', 'User', 'globalStorage', 'saoudrizwan.claude-dev', 'tasks'),
-    process.env.HOME && path.join(process.env.HOME, '.vscode-remote', 'data', 'User', 'globalStorage', 'saoudrizwan.claude-dev', 'tasks'),
-  ].filter(Boolean) as string[];
-
-  for (const basePath of possiblePaths) {
-    try {
-      await fs.access(basePath);
-      const tasks = await fs.readdir(basePath);
-      for (const taskId of tasks) {
-        const taskPath = path.join(basePath, taskId);
-        const stat = await fs.stat(taskPath);
-        if (stat.isDirectory()) {
-          const apiHistoryPath = path.join(taskPath, 'api_conversation_history.json');
-          try {
-            const stats = await fs.stat(apiHistoryPath);
-            if (stats.size > 0) {
-              return basePath;
-            }
-          } catch (error) {
-            console.warn(`⚠️  Could not read ${apiHistoryPath}:`, error);
-          }
-        }
-      }
-    } catch (error) {
-      console.warn(`⚠️  Could not access ${basePath}:`, error);
-    }
-  }
-
-  return null;
-}
-
-async function addClineHistory(zip: JSZip): Promise<void> {
-  const historyPath = await getClineHistoryPath();
-  if (!historyPath) {
-    console.warn('⚠️ WARNING: Cline history directory not found');
-    return;
-  }
-
-  let savedFiles = 0;
-  try {
-    const tasks = await fs.readdir(historyPath);
-    for (const taskId of tasks) {
-      const taskPath = path.join(historyPath, taskId);
-      const stat = await fs.stat(taskPath);
-      if (!stat.isDirectory()) continue;
-
-      const apiHistoryPath = path.join(taskPath, 'api_conversation_history.json');
-      const uiMessagesPath = path.join(taskPath, 'ui_messages.json');
-
-      try {
-        await addFileToZip(zip, apiHistoryPath, `cline_history/${taskId}/api_conversation_history.json`);
-        savedFiles++;
-      } catch (error) {
-        console.warn(`⚠️  Could not add ${apiHistoryPath} to zip:`, error);
-      }
-
-      try {
-        await addFileToZip(zip, uiMessagesPath, `cline_history/${taskId}/ui_messages.json`);
-        savedFiles++;
-      } catch (error) {
-        console.warn(`⚠️  Could not add ${uiMessagesPath} to zip:`, error);
-      }
-    }
-  } catch (error) {
-    console.warn('⚠️ WARNING: Error reading Cline history:', error);
-  }
-  console.info(`Added ${savedFiles} cline files to the submission.`);
 }
 
 async function createZip(): Promise<Buffer> {
   console.log('');
   const zip = new JSZip();
   await addSubmissionFiles(zip);
-  await addClineHistory(zip);
+  const roots = resolveClineRoots(process.env, process.platform, os.homedir());
+  const collected = collectClineHistory(roots);
+  await addClineHistoryToZip(zip, collected);
+  zip.file('cline-info.json', JSON.stringify(readClineInfo(roots)));
   const result = await zip.generateAsync({ type: 'nodebuffer' });
   console.log(`Submission archive size: ${result.byteLength} bytes`);
   console.log('');
@@ -286,6 +200,12 @@ async function handleSubmission() {
   const diffPath = await createGitDiff();
   await confirmSubmission({ name, email, diffPath });
   const zip = await createZip();
+  if (process.argv.includes('--dry-run')) {
+    const outputPath = path.join(SUBMISSION_DIR, 'submission.zip');
+    await fs.writeFile(outputPath, zip);
+    console.log(`Submission archive written to ${outputPath}`);
+    return;
+  }
   await uploadSubmission(zip, name, email);
 }
 
