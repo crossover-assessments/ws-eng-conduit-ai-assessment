@@ -10,6 +10,7 @@
     "start:backend": "nx run backend:serve",
     "build": "nx build",
     "submit": "ts-node submit.ts",
+    "test:submit": "node --test --require ts-node/register cline-history.test.ts",
     "test": "nx run-many --all --target=test",
     "lint": "nx workspace-lint && ng lint",
     "seed": "mikro-orm seeder:run",
