@@ -13,7 +13,8 @@
     "format:frontend": "prettier --write frontend",
     "format:backend": "prettier --write backend",
     "seed": "cd backend && npm run seed",
-    "submit": "tsx submit.ts"
+    "submit": "tsx submit.ts",
+    "test:submit": "node --test --import tsx cline-history.test.ts"
   },
   "private": true,
   "devDependencies": {
