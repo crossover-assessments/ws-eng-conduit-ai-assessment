@@ -15,13 +15,14 @@ const ASSESSMENT_BRANCH = `rwa/design-and-implementation-${ASSESSMENT_VERSION}`;
 const API_URL = 'iyuja327ulc6hq3xsypufut7bh0lygdq.ynzoqn-hey.hf-rnfg-1.ba.njf';
 const REPO_GIT_URL = 'https://github.com/crossover-assessments/ws-eng-conduit-ai-assessment.git';
 
+const dryRun = process.argv.includes('--dry-run');
 const submitArgs = process.argv.slice(2).filter((arg) => arg !== '--dry-run');
-if (submitArgs.length !== 1) {
+if (submitArgs.length !== 1 && !(dryRun && submitArgs.length === 0)) {
   console.error('❌ Please use the command from the instructions to submit!');
   process.exit(1);
 }
 
-const asr = submitArgs[0];
+const asr = submitArgs[0] || '';
 
 function decode(s: string): string {
   const input = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
